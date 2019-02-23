@@ -33,21 +33,24 @@ DEP_TOOL = $(EXT_TOOLS_DIR)/dep
 BUILD_LDFLAGS = -X $(PACKAGE_NAME)/lib/utils.BuildHash=$(PACKAGE_VERSION)
 GO_FLAGS = -gcflags '-N -l' -ldflags "$(BUILD_LDFLAGS)"
 GO_VERSION = 1.11
+GO_BIN = ${GOPATH}/bin
+GOOS = $(shell uname -s | tr '[:upper:]' '[:lower:]')
+GOARCH = $(GOOS)-amd64
 
 REGISTRY ?= gcr.io/makisu-project
 
 
 ### Targets to compile the makisu binaries.
 .PHONY: bins lbins cbins
-bins: bin/makisu/makisu
+bins: bin/makisu/makisu helpers
 
 bin/makisu/makisu: $(ALL_SRC) vendor
-	go build -tags bins $(GO_FLAGS) -o $@ bin/makisu/*.go
+	go build -tags bins $(GO_FLAGS) -o $(GO_BIN)/makisu bin/makisu/*.go
 
 lbins: bin/makisu/makisu.linux
 
 bin/makisu/makisu.linux: $(ALL_SRC) vendor
-	CGO_ENABLED=0 GOOS=linux go build -tags bins $(GO_FLAGS) -o $@ bin/makisu/*.go
+	CGO_ENABLED=0 GOOS=linux go build -tags bins $(GO_FLAGS) -o $(GO_BIN)/makisu.linux bin/makisu/*.go
 
 cbins:
 	docker run -i --rm -v $(PWD):/go/src/$(PACKAGE_NAME) \
@@ -56,6 +59,18 @@ cbins:
 		-w /go/src/$(PACKAGE_NAME) \
 		golang:$(GO_VERSION) \
 		-c "make lbins"
+
+helpers: ecr-helper gcr-helper
+
+gcr-helper:
+	go get -u github.com/GoogleCloudPlatform/docker-credential-gcr
+	CGO_ENABLED=0 GOOS=$(GOOS) make -C ${GOPATH}/src/github.com/GoogleCloudPlatform/docker-credential-gcr
+	mv ${GOPATH}/src/github.com/GoogleCloudPlatform/docker-credential-gcr/bin/docker-credential-gcr $(GO_BIN)
+
+ecr-helper:
+	go get -u github.com/awslabs/amazon-ecr-credential-helper/ecr-login/cli/docker-credential-ecr-login
+	CGO_ENABLED=0 GOOS=$(GOOS) make -C ${GOPATH}/src/github.com/awslabs/amazon-ecr-credential-helper $(GOARCH)
+	mv ${GOPATH}/src/github.com/awslabs/amazon-ecr-credential-helper/bin/$(GOARCH)/docker-credential-ecr-login $(GO_BIN)
 
 $(ALL_SRC): ;
 
@@ -98,14 +113,24 @@ env: test/python/requirements.txt
 
 ### Target to build the makisu docker images.
 .PHONY: images publish
-images:
+images: build-images
+
+build-images: build-scratch build-alpine
+
+build-scratch:
 	docker build -t $(REGISTRY)/makisu:$(PACKAGE_VERSION) -f Dockerfile .
 	docker tag $(REGISTRY)/makisu:$(PACKAGE_VERSION) makisu:$(PACKAGE_VERSION)
+
+build-alpine:
 	docker build -t $(REGISTRY)/makisu-alpine:$(PACKAGE_VERSION) -f Dockerfile.alpine .
 	docker tag $(REGISTRY)/makisu-alpine:$(PACKAGE_VERSION) makisu-alpine:$(PACKAGE_VERSION)
 
-publish: images
+publish: build-images publish-scratch publish-alpine
+
+publish-scratch:
 	docker push $(REGISTRY)/makisu:$(PACKAGE_VERSION)
+
+publish-alpine:
 	docker push $(REGISTRY)/makisu-alpine:$(PACKAGE_VERSION)
 
 
