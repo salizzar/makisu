@@ -30,6 +30,16 @@ EXT_TOOLS = github.com/axw/gocov/gocov github.com/AlekSi/gocov-xml github.com/ma
 EXT_TOOLS_DIR = ext-tools/$(OS)
 DEP_TOOL = $(EXT_TOOLS_DIR)/dep
 
+MAKISU_STORAGE_DIR = /makisu-storage
+MAKISU_INTERNAL_DIR = /makisu-internal
+MAKISU_BINARY_PATH = /makisu-internal/makisu
+MAKISU_CACERTS_PATH = /makisu-internal/certs/cacerts.pem
+
+CMD_BUILD_FLAGS = -ldflags "-X $(PACKAGE_NAME)/lib/pathutils.DefaultStorageDir=$(MAKISU_STORAGE_DIR) \
+			    -X $(PACKAGE_NAME)/lib/pathutils.DefaultInternalDir=$(MAKISU_INTERNAL_DIR) \
+			    -X $(PACKAGE_NAME)/lib/pathutils.DefaultBinaryPath=$(MAKISU_BINARY_PATH) \
+			    -X $(PACKAGE_NAME)/lib/pathutils.DefaultCACertsPath=$(MAKISU_CACERTS_PATH)"
+
 BUILD_LDFLAGS = -X $(PACKAGE_NAME)/lib/utils.BuildHash=$(PACKAGE_VERSION)
 GO_FLAGS = -gcflags '-N -l' -ldflags "$(BUILD_LDFLAGS)"
 GO_VERSION = 1.11
@@ -45,12 +55,12 @@ REGISTRY ?= gcr.io/makisu-project
 bins: bin/makisu/makisu helpers
 
 bin/makisu/makisu: $(ALL_SRC) vendor
-	go build -tags bins $(GO_FLAGS) -o $(GO_BIN)/makisu bin/makisu/*.go
+	go build -tags bins $(GO_FLAGS) $(CMD_BUILD_FLAGS) -o $(GO_BIN)/makisu bin/makisu/*.go
 
 lbins: bin/makisu/makisu.linux
 
 bin/makisu/makisu.linux: $(ALL_SRC) vendor
-	CGO_ENABLED=0 GOOS=linux go build -tags bins $(GO_FLAGS) -o $(GO_BIN)/makisu.linux bin/makisu/*.go
+	CGO_ENABLED=0 GOOS=linux go build -tags bins $(GO_FLAGS) $(CMD_BUILD_FLAGS) -o $(GO_BIN)/makisu.linux bin/makisu/*.go
 
 cbins:
 	docker run -i --rm -v $(PWD):/go/src/$(PACKAGE_NAME) \
